@@ -1,108 +1,64 @@
 # Copyright (C) 2019, Fuzhou Rockchip Electronics Co., Ltd
+# Copyright (C) 2025, HoloIndustry
 # Released under the MIT license (see COPYING.MIT for the terms)
-
-PATCHPATH = "${CURDIR}/u-boot-rockchip"
-inherit auto-patch
-
-inherit local-git python3-dir
+#
+# Mainline U-Boot for Rockchip RK3588 with rkbin firmware blobs.
+# Replaces BSP U-Boot 2017.09 — enables standard boot.scr, persistent
+# environment, and proper RAUC A/B OTA with bootloader-level rollback.
 
 require recipes-bsp/u-boot/u-boot.inc
 require recipes-bsp/u-boot/u-boot-common.inc
 
 PROVIDES = "virtual/bootloader"
 
-DEPENDS += "bc-native dtc-native"
+PV = "2025.04"
 
-PV = "2017.09"
+LIC_FILES_CHKSUM = "file://Licenses/README;md5=2ca5f2c35c8cc335f0a19756634782f1"
 
-LIC_FILES_CHKSUM = "file://Licenses/README;md5=a2c678cfd4a4d97135585cad908541c6"
+# Mainline U-Boot v2025.04
+SRCREV = "9f8c7a44c3812e4c781b5ce9a0400eebc218136e"
+SRC_URI = "git://source.denx.de/u-boot/u-boot.git;protocol=https;branch=master"
 
-SRCREV = "a93658f8f45dc0266be21840931131b10c325e03"
-SRCREV_rkbin = "c41b714cacd249e3ef69b2bbe774da5095eefd72"
-SRC_URI = " \
-	git://github.com/JeffyCN/mirrors.git;protocol=https;branch=u-boot; \
-	git://github.com/JeffyCN/mirrors.git;protocol=https;branch=rkbin;name=rkbin;destsuffix=rkbin; \
-"
-
+# Rockchip binary firmware (DDR training blob + ARM Trusted Firmware)
+SRCREV_rkbin = "74213af1e952c4683d2e35952507133b61394862"
+SRC_URI += "git://github.com/rockchip-linux/rkbin.git;protocol=https;branch=master;name=rkbin;destsuffix=rkbin"
 SRCREV_FORMAT = "default_rkbin"
 
-DEPENDS:append = " ${PYTHON_PN}-native"
+DEPENDS += "bc-native dtc-native python3-pyelftools-native"
 
-# Needed for packing BSP u-boot
-DEPENDS:append = " coreutils-native ${PYTHON_PN}-pyelftools-native"
+# Rockchip firmware paths (exported as env vars for the U-Boot build)
+RK_BL31 = "${WORKDIR}/rkbin/bin/rk35/rk3588_bl31_v1.51.elf"
+RK_TPL = "${WORKDIR}/rkbin/bin/rk35/rk3588_ddr_lp4_2112MHz_lp5_2400MHz_v1.19.bin"
+
+# Mainline U-Boot build produces these
+UBOOT_BINARY = "u-boot.itb"
 
 do_configure:prepend() {
-	# Make sure we use /usr/bin/env ${PYTHON_PN} for scripts
-	for s in `grep -rIl python ${S}`; do
-		sed -i -e '1s|^#!.*python[23]*|#!/usr/bin/env ${PYTHON_PN}|' $s
-	done
-
-	# Support python3
-	sed -i -e 's/\(open([^,]*\))/\1, "rb")/' \
-		-e 's/print >> \([^,]*\), *\(.*\),*$/print(\2, file=\1)/' \
-		-e 's/print \(.*\)$/print(\1)/' \
-		${S}/arch/arm/mach-rockchip/make_fit_atf.py
-
-	# Remove unneeded stages from make.sh
-	sed -i -e '/^select_tool/d' -e '/^clean/d' -e '/^\t*make/d' -e '/which python2/{n;n;s/exit 1/true/}' ${S}/make.sh
-
-	# Fixup platform(chip) detection
-	sed -i "s/PLAT=.*/PLAT=${RK_SOC_FAMILY}/" ${S}/make.sh
-
-	[ ! -e "${S}/.config" ] || make -C ${S} mrproper
-
-	sed -i 's/ found;/ found = NULL;/' ${S}/lib/avb/libavb/avb_slot_verify.c
+    # Mainline U-Boot needs BL31 and TPL available during configure/compile
+    export BL31="${RK_BL31}"
+    export ROCKCHIP_TPL="${RK_TPL}"
 }
 
-# Generate Rockchip style loader binaries
-RK_IDBLOCK_IMG = "idblock.img"
-RK_LOADER_BIN = "loader.bin"
-RK_TRUST_IMG = "trust.img"
-
-UBOOT_BINARY = "uboot.img"
+do_compile:prepend() {
+    export BL31="${RK_BL31}"
+    export ROCKCHIP_TPL="${RK_TPL}"
+}
 
 do_compile:append() {
-	cd ${B}
-
-	# Prepare needed files
-	for d in make.sh scripts configs arch/arm/mach-rockchip; do
-		cp -rT ${S}/${d} ${d}
-	done
-
-	if [ -z "${RK_UBOOT_CFG}" ]; then
-		RK_UBOOT_CFG=${RK_SOC_FAMILY}
-	fi
-
-	# Pack Rockchip loader images
-	if [ "${RK_UBOOT_SPL}" ]; then
-		# Use U-Boot's SPL
-		./make.sh ${RK_UBOOT_CFG} --spl-new
-		if ! grep -q "ROCKCHIP_FIT_IMAGE_PACK=y" .config; then
-			# Repack SPL for non-FIT U-Boot
-			./make.sh --spl
-		fi
-	else
-		# Use Rockchip Miniloader
-		./make.sh ${RK_UBOOT_CFG}
-	fi
-	ln -sf *_loader*.bin "${RK_LOADER_BIN}"
-
-	# Generate idblock image
-	bbnote "${PN}: Generating ${RK_IDBLOCK_IMG}..."
-	if ls *.img | grep -q idblock; then
-		ln -sf *_idblock_*.img "${RK_IDBLOCK_IMG}"
-	else
-		./make.sh --idblock
-		ln -sf idblock.bin "${RK_IDBLOCK_IMG}"
-	fi
+    # Verify expected outputs exist
+    for f in idbloader.img u-boot.itb u-boot-rockchip.bin; do
+        if [ ! -f "${B}/${f}" ]; then
+            bbfatal "${PN}: Expected output ${f} not found after build"
+        fi
+    done
 }
 
 do_deploy:append() {
-	cd ${B}
+    # Mainline U-Boot artifacts
+    install -m 0644 ${B}/idbloader.img ${DEPLOYDIR}/idbloader.img
+    install -m 0644 ${B}/u-boot.itb ${DEPLOYDIR}/u-boot.itb
+    install -m 0644 ${B}/u-boot-rockchip.bin ${DEPLOYDIR}/u-boot-rockchip.bin
 
-	for binary in "${RK_IDBLOCK_IMG}" "${RK_LOADER_BIN}" "${RK_TRUST_IMG}";do
-		[ -f "${binary}" ] || continue
-		install "${binary}" "${DEPLOYDIR}/${binary}-${PV}"
-		ln -sf "${binary}-${PV}" "${DEPLOYDIR}/${binary}"
-	done
+    # Backward-compatible symlinks for WKS / rockchip-image.bbclass
+    ln -sf idbloader.img ${DEPLOYDIR}/idblock.img
 }
