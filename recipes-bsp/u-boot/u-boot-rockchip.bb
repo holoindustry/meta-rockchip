@@ -24,7 +24,7 @@ SRCREV_rkbin = "74213af1e952c4683d2e35952507133b61394862"
 SRC_URI += "git://github.com/rockchip-linux/rkbin.git;protocol=https;branch=master;name=rkbin;destsuffix=rkbin"
 SRCREV_FORMAT = "default_rkbin"
 
-DEPENDS += "bc-native dtc-native python3-pyelftools-native gnutls-native"
+DEPENDS += "bc-native dtc-native python3-pyelftools-native gnutls-native rk-binary-native"
 
 # Rockchip firmware paths (exported as env vars for the U-Boot build)
 RK_BL31 = "${WORKDIR}/rkbin/bin/rk35/rk3588_bl31_v1.51.elf"
@@ -51,6 +51,11 @@ do_compile:append() {
             bbfatal "${PN}: Expected output ${f} not found after build"
         fi
     done
+
+    # Generate loader.bin for rkdeveloptool Maskrom flashing
+    cd ${WORKDIR}/rkbin
+    boot_merger RKBOOT/RK3588MINIALL.ini
+    cp rk3588_spl_loader_*.bin ${B}/loader.bin
 }
 
 do_deploy:append() {
@@ -59,6 +64,6 @@ do_deploy:append() {
     install -m 0644 ${B}/u-boot.itb ${DEPLOYDIR}/u-boot.itb
     install -m 0644 ${B}/u-boot-rockchip.bin ${DEPLOYDIR}/u-boot-rockchip.bin
 
-    # Backward-compatible symlinks for WKS / rockchip-image.bbclass
-    ln -sf idbloader.img ${DEPLOYDIR}/idblock.img
+    # Loader for rkdeveloptool Maskrom flashing
+    install -m 0644 ${B}/loader.bin ${DEPLOYDIR}/loader.bin
 }
