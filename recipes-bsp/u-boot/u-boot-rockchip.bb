@@ -24,7 +24,7 @@ SRCREV_rkbin = "74213af1e952c4683d2e35952507133b61394862"
 SRC_URI += "git://github.com/rockchip-linux/rkbin.git;protocol=https;branch=master;name=rkbin;destsuffix=rkbin"
 SRCREV_FORMAT = "default_rkbin"
 
-DEPENDS += "bc-native dtc-native python3-pyelftools-native"
+DEPENDS += "bc-native dtc-native python3-pyelftools-native gnutls-native"
 
 # Rockchip firmware paths (exported as env vars for the U-Boot build)
 RK_BL31 = "${WORKDIR}/rkbin/bin/rk35/rk3588_bl31_v1.51.elf"
