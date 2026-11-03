@@ -16,7 +16,7 @@ inherit local-git
 SRC_URI = " \
 	git://github.com/JeffyCN/mirrors.git;protocol=https;branch=linux-rga-multi; \
 "
-SRCREV = "c6105b06ade0e5dc7f16924c7f0f5e9dcdb198bc"
+SRCREV = "57a1067a246c71fa6c9a355d1668884fda155dd5"
 S = "${WORKDIR}/git"
 
 inherit meson pkgconfig
